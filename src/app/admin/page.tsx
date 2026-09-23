@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import {
   Package,
@@ -60,50 +60,7 @@ interface SupportTicket {
   notes?: string[];
 }
 
-const initialTickets: SupportTicket[] = [
-  {
-    id: 'tk-1',
-    ticketNumber: 'TK-1042',
-    customerName: 'Carlos Mendive',
-    company: 'Valencia Residential S.L.',
-    email: 'c.mendive@valenciares.es',
-    subject: 'Substrate adhesion verification for FiberGel S2 on heated anhydrite screed',
-    priority: 'high',
-    status: 'open',
-    category: 'Technical Formulation',
-    createdAt: '2024-11-20 09:15',
-    description: 'We are installing 120x120 porcelain tiles over an anhydrite floor with embedded water radiant tubes. Please confirm primer requirements prior to applying FiberGel S2.',
-    notes: ['Assigned to Chief Chemist Dr. Rodriguez. Primer PR-200 recommended.']
-  },
-  {
-    id: 'tk-2',
-    ticketNumber: 'TK-1041',
-    customerName: 'Moncef Ben Ammar',
-    company: 'Société Tunisienne des Grands Travaux',
-    email: 'm.benammar@stgt.tn',
-    subject: 'Request for official CE Declaration of Performance (DoP) batch #9042',
-    priority: 'urgent',
-    status: 'in_progress',
-    category: 'Certificate Request',
-    createdAt: '2025-01-19 14:20',
-    description: 'Technical inspectors require stamped manufacturer DoP certificate under EN 12004 for container delivery in Tunis.',
-    notes: ['Certificate generated from QA database. Pending digital signature.']
-  },
-  {
-    id: 'tk-3',
-    ticketNumber: 'TK-1040',
-    customerName: 'Alejandro Morales',
-    company: 'Caribe Hotels Group',
-    email: 'a.morales@caribehotels.cu',
-    subject: 'Saltwater pool mosaic debonding review - Varadero Resort',
-    priority: 'medium',
-    status: 'resolved',
-    category: 'Jobsite Advisory',
-    createdAt: '2024-11-17 11:30',
-    description: 'Existing subcontractor used generic adhesive. Requested specification guide for replacing underwater tiles with SuperCol PISCINAS.',
-    notes: ['Sent comprehensive 6-step pool tile installation technical guideline. Case resolved.']
-  }
-];
+const initialTickets: SupportTicket[] = [];
 
 interface FormData {
   name: string;
@@ -245,6 +202,38 @@ export default function AdminPage() {
     setTimeout(() => setToastMessage(null), 3500);
   };
 
+  // Fetch support tickets from persistent database
+  const fetchTickets = useCallback(async () => {
+    try {
+      const res = await fetch('/api/tickets', { cache: 'no-store' });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && Array.isArray(data.tickets)) {
+          setTickets(data.tickets);
+        }
+      }
+    } catch (e) {
+      console.error('Failed to fetch tickets from server:', e);
+    }
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+    queueMicrotask(() => {
+      if (isMounted) {
+        fetchTickets();
+      }
+    });
+    const interval = setInterval(fetchTickets, 10000);
+    const handleFocus = () => fetchTickets();
+    window.addEventListener('focus', handleFocus);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [fetchTickets]);
+
   // Check persistent login state
   useEffect(() => {
     try {
@@ -263,27 +252,32 @@ export default function AdminPage() {
     }
   }, []);
 
-  const handleLogin = (e?: React.FormEvent) => {
+  const handleLogin = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     setLoginError('');
 
-    // Pre-configured valid credentials: admin / xtreme2024 or admin / admin
-    if (
-      (loginUsername === 'admin' || loginUsername === 'admin@xtreme.tn' || loginUsername === 'admin@xtreme-cc.com') &&
-      (loginPassword === 'xtreme2024' || loginPassword === 'admin' || loginPassword === 'admin123')
-    ) {
-      setIsAuthenticated(true);
-      localStorage.setItem('xtreme_admin_session', 'true');
-      showToast('Welcome back, Administrator.');
-    } else {
-      setLoginError('Invalid credentials. Use admin / xtreme2024 or click Quick Demo Login.');
-    }
-  };
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: loginUsername.trim(),
+          password: loginPassword
+        })
+      });
 
-  const handleQuickDemoLogin = () => {
-    setIsAuthenticated(true);
-    localStorage.setItem('xtreme_admin_session', 'true');
-    showToast('Authenticated as Senior Administrator (Demo Mode).');
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        setIsAuthenticated(true);
+        localStorage.setItem('xtreme_admin_session', 'true');
+        showToast('Welcome back, Mario. Database synchronized.');
+      } else {
+        setLoginError(data.error || 'Invalid username or password. Authorized administrator access only.');
+      }
+    } catch {
+      setLoginError('Authentication service connection error. Please try again.');
+    }
   };
 
   const handleLogout = () => {
@@ -407,30 +401,44 @@ export default function AdminPage() {
   };
 
   // Support Ticket Handlers
-  const handleUpdateTicketStatus = (id: string, newStatus: SupportTicket['status']) => {
-    setTickets(tickets.map(t => t.id === id ? { ...t, status: newStatus } : t));
+  const handleUpdateTicketStatus = async (id: string, newStatus: SupportTicket['status']) => {
+    setTickets((prev) => prev.map((t) => (t.id === id ? { ...t, status: newStatus } : t)));
     if (selectedTicket && selectedTicket.id === id) {
       setSelectedTicket({ ...selectedTicket, status: newStatus });
     }
     showToast(`Ticket status changed to ${newStatus.replace('_', ' ')}.`);
+
+    try {
+      await fetch('/api/tickets', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, status: newStatus })
+      });
+    } catch (e) {
+      console.error('Failed to sync ticket status update:', e);
+    }
   };
 
-  const handleCreateTicket = (e: React.FormEvent) => {
+  const handleCreateTicket = async (e: React.FormEvent) => {
     e.preventDefault();
-    const newTk: SupportTicket = {
-      id: `tk-${Date.now()}`,
-      ticketNumber: `TK-${Math.floor(1000 + Math.random() * 9000)}`,
-      customerName: newTicketData.customerName,
-      company: newTicketData.company,
-      email: newTicketData.email,
-      subject: newTicketData.subject,
-      priority: newTicketData.priority,
-      category: newTicketData.category,
-      status: 'open',
-      createdAt: 'Just now',
-      description: newTicketData.description
-    };
-    setTickets([newTk, ...tickets]);
+    try {
+      const res = await fetch('/api/tickets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newTicketData)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.ticket) {
+          setTickets((prev) => [data.ticket, ...prev]);
+          showToast(`Support Ticket ${data.ticket.ticketNumber} saved to database.`);
+        }
+      }
+    } catch (e) {
+      console.error('Failed to save ticket to database:', e);
+      showToast('Error saving ticket to database.');
+    }
+
     setNewTicketModalOpen(false);
     setNewTicketData({
       customerName: '',
@@ -441,7 +449,32 @@ export default function AdminPage() {
       category: 'Technical Formulation',
       description: ''
     });
-    showToast(`Support Ticket ${newTk.ticketNumber} created successfully.`);
+  };
+
+  const handleDeleteTicket = async (id: string) => {
+    setTickets((prev) => prev.filter((t) => t.id !== id));
+    if (selectedTicket && selectedTicket.id === id) {
+      setSelectedTicket(null);
+    }
+    showToast('Ticket deleted from database.');
+    try {
+      await fetch(`/api/tickets?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+    } catch (e) {
+      console.error('Failed to delete ticket from database:', e);
+    }
+  };
+
+  const handleResetTickets = async () => {
+    if (window.confirm('Reset all support tickets? This will purge all tickets from the database.')) {
+      setTickets([]);
+      setSelectedTicket(null);
+      showToast('All support tickets have been reset.');
+      try {
+        await fetch('/api/tickets?reset=true', { method: 'DELETE' });
+      } catch (e) {
+        console.error('Failed to reset tickets in database:', e);
+      }
+    }
   };
 
   // Dynamic Specs Table
@@ -493,14 +526,14 @@ export default function AdminPage() {
           <form onSubmit={handleLogin} className="space-y-4 text-xs">
             <div>
               <label className="block font-bold text-slate-300 mb-1.5">
-                Admin Username or Email
+                Admin Username
               </label>
               <input
                 type="text"
                 required
                 value={loginUsername}
                 onChange={(e) => setLoginUsername(e.target.value)}
-                placeholder="admin"
+                placeholder="mario"
                 className="w-full p-3 bg-slate-950 border border-slate-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-[#C62828]"
               />
             </div>
@@ -510,9 +543,6 @@ export default function AdminPage() {
                 <label className="font-bold text-slate-300">
                   Password
                 </label>
-                <span className="text-[10px] text-slate-500 font-mono">
-                  Default: xtreme2024
-                </span>
               </div>
               <input
                 type="password"
@@ -526,27 +556,12 @@ export default function AdminPage() {
 
             <button
               type="submit"
-              className="w-full py-3 bg-[#C62828] hover:bg-[#B71C1C] text-white font-bold text-xs uppercase tracking-wider rounded-lg shadow-lg transition-transform hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-2 mt-2"
+              className="w-full py-3 bg-[#C62828] hover:bg-[#B71C1C] text-white font-bold text-xs uppercase tracking-wider rounded-lg shadow-lg transition-transform hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-2 mt-4 cursor-pointer"
             >
               <Lock className="w-4 h-4" />
-              <span>Sign In with Password</span>
+              <span>Sign In to Admin Portal</span>
             </button>
           </form>
-
-          {/* Quick One-Click Demo Login Button */}
-          <div className="mt-6 pt-6 border-t border-slate-800 text-center">
-            <span className="text-[11px] text-slate-400 block mb-3 font-semibold">
-              Testing credentials / Evaluator access:
-            </span>
-            <button
-              type="button"
-              onClick={handleQuickDemoLogin}
-              className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-sky-300 border border-slate-700 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-2 hover:border-sky-500"
-            >
-              <ShieldCheck className="w-4 h-4 text-sky-400" />
-              <span>⚡ One-Click Login as Admin (Instant Demo)</span>
-            </button>
-          </div>
 
           <div className="mt-6 text-center">
             <Link
@@ -1311,88 +1326,120 @@ export default function AdminPage() {
                 </div>
               </div>
 
-              <button
-                type="button"
-                onClick={() => setNewTicketModalOpen(true)}
-                className="bg-[#C62828] hover:bg-[#B71C1C] text-white text-xs font-bold uppercase tracking-wider px-4 py-2.5 rounded-lg shadow flex items-center gap-2"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Create Support Ticket</span>
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleResetTickets}
+                  className="bg-slate-900 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-bold uppercase tracking-wider px-3.5 py-2.5 rounded-lg shadow flex items-center gap-1.5 transition-colors cursor-pointer"
+                  title="Purge all support tickets from database"
+                >
+                  <RotateCcw className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Reset All Support</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setNewTicketModalOpen(true)}
+                  className="bg-[#C62828] hover:bg-[#B71C1C] text-white text-xs font-bold uppercase tracking-wider px-4 py-2.5 rounded-lg shadow flex items-center gap-2 cursor-pointer transition-transform hover:scale-105"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Create Support Ticket</span>
+                </button>
+              </div>
             </div>
 
             {/* Support Tickets Table */}
             <div className="bg-slate-800/90 border border-slate-700 rounded-xl overflow-hidden shadow-lg">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-950 text-slate-400 uppercase tracking-wider text-[11px] border-b border-slate-700">
-                    <tr>
-                      <th className="py-3.5 px-4 font-bold">Ticket #</th>
-                      <th className="py-3.5 px-4 font-bold">Contractor / Company</th>
-                      <th className="py-3.5 px-4 font-bold">Category</th>
-                      <th className="py-3.5 px-4 font-bold">Subject</th>
-                      <th className="py-3.5 px-4 font-bold">Priority</th>
-                      <th className="py-3.5 px-4 font-bold">Status</th>
-                      <th className="py-3.5 px-4 font-bold text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-700/60">
-                    {filteredTickets.map((tk) => (
-                      <tr
-                        key={tk.id}
-                        onClick={() => setSelectedTicket(tk)}
-                        className="hover:bg-slate-750 transition-colors cursor-pointer"
-                      >
-                        <td className="py-3.5 px-4 font-mono font-bold text-sky-400">
-                          {tk.ticketNumber}
-                        </td>
-                        <td className="py-3.5 px-4">
-                          <div className="font-bold text-white">{tk.customerName}</div>
-                          <div className="text-[10px] text-slate-400">{tk.company}</div>
-                        </td>
-                        <td className="py-3.5 px-4 text-slate-300">
-                          {tk.category}
-                        </td>
-                        <td className="py-3.5 px-4 text-white font-medium max-w-xs truncate">
-                          {tk.subject}
-                        </td>
-                        <td className="py-3.5 px-4">
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                            tk.priority === 'urgent'
-                              ? 'bg-red-950 text-red-400 border border-red-800'
-                              : tk.priority === 'high'
-                              ? 'bg-amber-950 text-amber-400 border border-amber-800'
-                              : 'bg-slate-700 text-slate-300'
-                          }`}>
-                            {tk.priority}
-                          </span>
-                        </td>
-                        <td className="py-3.5 px-4">
-                          <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase ${
-                            tk.status === 'open'
-                              ? 'bg-red-950 text-red-300 border border-red-800'
-                              : tk.status === 'in_progress'
-                              ? 'bg-amber-950 text-amber-300 border border-amber-800'
-                              : 'bg-emerald-950 text-emerald-300 border border-emerald-800'
-                          }`}>
-                            {tk.status.replace('_', ' ')}
-                          </span>
-                        </td>
-                        <td className="py-3.5 px-4 text-right" onClick={(e) => e.stopPropagation()}>
-                          <button
-                            type="button"
-                            onClick={() => setSelectedTicket(tk)}
-                            className="p-1.5 text-sky-400 hover:text-white rounded"
-                            title="View ticket details"
-                          >
-                            <Eye className="w-4 h-4" />
-                          </button>
-                        </td>
+              {filteredTickets.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-950 text-slate-400 uppercase tracking-wider text-[11px] border-b border-slate-700">
+                      <tr>
+                        <th className="py-3.5 px-4 font-bold">Ticket #</th>
+                        <th className="py-3.5 px-4 font-bold">Contractor / Company</th>
+                        <th className="py-3.5 px-4 font-bold">Category</th>
+                        <th className="py-3.5 px-4 font-bold">Subject</th>
+                        <th className="py-3.5 px-4 font-bold">Priority</th>
+                        <th className="py-3.5 px-4 font-bold">Status</th>
+                        <th className="py-3.5 px-4 font-bold text-right">Actions</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody className="divide-y divide-slate-700/60">
+                      {filteredTickets.map((tk) => (
+                        <tr
+                          key={tk.id}
+                          onClick={() => setSelectedTicket(tk)}
+                          className="hover:bg-slate-750 transition-colors cursor-pointer"
+                        >
+                          <td className="py-3.5 px-4 font-mono font-bold text-sky-400">
+                            {tk.ticketNumber}
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <div className="font-bold text-white">{tk.customerName}</div>
+                            <div className="text-[10px] text-slate-400">{tk.company}</div>
+                          </td>
+                          <td className="py-3.5 px-4 text-slate-300">
+                            {tk.category}
+                          </td>
+                          <td className="py-3.5 px-4 text-white font-medium max-w-xs truncate">
+                            {tk.subject}
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                              tk.priority === 'urgent'
+                                ? 'bg-red-950 text-red-400 border border-red-800'
+                                : tk.priority === 'high'
+                                ? 'bg-amber-950 text-amber-400 border border-amber-800'
+                                : 'bg-slate-700 text-slate-300'
+                            }`}>
+                              {tk.priority}
+                            </span>
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase ${
+                              tk.status === 'open'
+                                ? 'bg-red-950 text-red-300 border border-red-800'
+                                : tk.status === 'in_progress'
+                                ? 'bg-amber-950 text-amber-300 border border-amber-800'
+                                : 'bg-emerald-950 text-emerald-300 border border-emerald-800'
+                            }`}>
+                              {tk.status.replace('_', ' ')}
+                            </span>
+                          </td>
+                          <td className="py-3.5 px-4 text-right" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex items-center justify-end gap-1">
+                              <button
+                                type="button"
+                                onClick={() => setSelectedTicket(tk)}
+                                className="p-1.5 text-sky-400 hover:text-white rounded hover:bg-slate-700"
+                                title="View ticket details"
+                              >
+                                <Eye className="w-4 h-4" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteTicket(tk.id)}
+                                className="p-1.5 text-red-400 hover:text-red-300 rounded hover:bg-slate-700"
+                                title="Delete ticket from database"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="p-12 text-center text-slate-400">
+                  <Headphones className="w-12 h-12 mx-auto mb-3 opacity-40 text-amber-400" />
+                  <h4 className="font-bold text-sm text-white mb-1">Support Desk Cleared</h4>
+                  <p className="text-xs max-w-md mx-auto">
+                    All support tickets have been reset and saved to the central database. New contractor inquiries and jobsite advisory cases will appear here or can be created above.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         )}

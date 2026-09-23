@@ -1,54 +1,19 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { CompanySettings, defaultCompanySettings, SocialLinks } from '@/data/company';
 
-export interface SocialLinks {
-  linkedin: string;
-  facebook: string;
-  twitter: string;
-  youtube: string;
-  instagram?: string;
-  whatsapp?: string;
-}
-
-export interface CompanySettings {
-  phone: string;
-  phoneCall: string;
-  phoneLabel: string;
-  email: string;
-  officeLocation: string;
-  officeSubtext: string;
-  workingHours: string;
-  standardsNote: string;
-  socialLinks: SocialLinks;
-}
-
-export const defaultCompanySettings: CompanySettings = {
-  phone: '+(34) 696 472 925',
-  phoneCall: '+34696472925',
-  phoneLabel: 'Tunisia Hotline',
-  email: 'info@xtreme-cc.com',
-  officeLocation: 'Tunis, Tunisia',
-  officeSubtext: 'Commercial & Technical Representation',
-  workingHours: 'Monday - Friday: 8:00 AM - 5:00 PM',
-  standardsNote: 'Certified Management & Quality Standards — UNE EN 12004 & EN 998 (ISO 9001:2015).',
-  socialLinks: {
-    linkedin: 'https://www.linkedin.com/company/https-tika.ly-/',
-    facebook: 'https://www.facebook.com/Xtremechems',
-    twitter: 'https://x.com/Xtreme_glue',
-    youtube: 'https://www.youtube.com/@XTREMEGLUE',
-    instagram: '',
-    whatsapp: '',
-  },
-};
+export type { CompanySettings, SocialLinks };
+export { defaultCompanySettings };
 
 const STORAGE_KEY = 'xtreme_company_settings';
 
 interface CompanySettingsContextType {
   settings: CompanySettings;
-  updateSettings: (newSettings: Partial<CompanySettings>) => void;
-  updateSocialLinks: (social: Partial<SocialLinks>) => void;
-  resetSettings: () => void;
+  updateSettings: (newSettings: Partial<CompanySettings>) => Promise<void>;
+  updateSocialLinks: (social: Partial<SocialLinks>) => Promise<void>;
+  resetSettings: () => Promise<void>;
+  refreshSettings: () => Promise<void>;
 }
 
 const CompanySettingsContext = createContext<CompanySettingsContextType | undefined>(undefined);
@@ -56,63 +21,134 @@ const CompanySettingsContext = createContext<CompanySettingsContextType | undefi
 export function CompanySettingsProvider({ children }: { children: React.ReactNode }) {
   const [settings, setSettings] = useState<CompanySettings>(defaultCompanySettings);
 
+  const fetchServerSettings = useCallback(async () => {
+    try {
+      const res = await fetch('/api/settings', { cache: 'no-store' });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.settings) {
+          setSettings((prev) => ({
+            ...prev,
+            ...data.settings,
+            socialLinks: {
+              ...prev.socialLinks,
+              ...(data.settings.socialLinks || {})
+            }
+          }));
+          try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(data.settings));
+          } catch {
+            // Ignore
+          }
+        }
+      }
+    } catch (e) {
+      console.error('Failed to fetch settings from server API:', e);
+    }
+  }, []);
+
   useEffect(() => {
+    let isMounted = true;
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
         const parsed = JSON.parse(stored);
         queueMicrotask(() => {
-          setSettings((prev) => ({
-            ...prev,
-            ...parsed,
-            socialLinks: {
-              ...prev.socialLinks,
-              ...(parsed.socialLinks || {})
-            }
-          }));
+          if (isMounted) {
+            setSettings((prev) => ({
+              ...prev,
+              ...parsed,
+              socialLinks: {
+                ...prev.socialLinks,
+                ...(parsed.socialLinks || {})
+              }
+            }));
+          }
         });
       }
-    } catch (e) {
-      console.error('Failed to parse company settings from localStorage', e);
+    } catch {
+      // Ignore
     }
-  }, []);
 
-  const saveSettings = (newVal: CompanySettings) => {
+    queueMicrotask(() => {
+      if (isMounted) {
+        fetchServerSettings();
+      }
+    });
+
+    const interval = setInterval(fetchServerSettings, 15000);
+    const handleFocus = () => fetchServerSettings();
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [fetchServerSettings]);
+
+  const saveSettings = async (newVal: CompanySettings) => {
     setSettings(newVal);
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(newVal));
+    } catch {
+      // Ignore
+    }
+
+    try {
+      await fetch('/api/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newVal)
+      });
     } catch (e) {
-      console.error('Failed to save company settings', e);
+      console.error('Failed to sync settings with server:', e);
     }
   };
 
-  const updateSettings = (partial: Partial<CompanySettings>) => {
-    saveSettings({
+  const updateSettings = async (partial: Partial<CompanySettings>) => {
+    const newVal = {
       ...settings,
       ...partial,
       socialLinks: {
         ...settings.socialLinks,
         ...(partial.socialLinks || {})
       }
-    });
+    };
+    await saveSettings(newVal);
   };
 
-  const updateSocialLinks = (social: Partial<SocialLinks>) => {
-    saveSettings({
+  const updateSocialLinks = async (social: Partial<SocialLinks>) => {
+    const newVal = {
       ...settings,
       socialLinks: {
         ...settings.socialLinks,
         ...social
       }
-    });
+    };
+    await saveSettings(newVal);
   };
 
-  const resetSettings = () => {
-    saveSettings(defaultCompanySettings);
+  const resetSettings = async () => {
+    setSettings(defaultCompanySettings);
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+      await fetch('/api/settings', { method: 'DELETE' });
+    } catch (e) {
+      console.error('Failed to reset settings on server:', e);
+    }
   };
 
   return (
-    <CompanySettingsContext.Provider value={{ settings, updateSettings, updateSocialLinks, resetSettings }}>
+    <CompanySettingsContext.Provider
+      value={{
+        settings,
+        updateSettings,
+        updateSocialLinks,
+        resetSettings,
+        refreshSettings: fetchServerSettings
+      }}
+    >
       {children}
     </CompanySettingsContext.Provider>
   );

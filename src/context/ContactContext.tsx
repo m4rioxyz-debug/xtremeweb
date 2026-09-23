@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 
 export interface ContactMessage {
   id: string;
@@ -20,122 +20,173 @@ export interface ContactMessage {
 interface ContactContextType {
   messages: ContactMessage[];
   unreadCount: number;
-  addMessage: (msg: Omit<ContactMessage, 'id' | 'date' | 'isRead'>) => void;
-  markAsRead: (id: string) => void;
-  markAllAsRead: () => void;
-  deleteMessage: (id: string) => void;
+  isLoading: boolean;
+  addMessage: (msg: Omit<ContactMessage, 'id' | 'date' | 'isRead'>) => Promise<ContactMessage | null>;
+  markAsRead: (id: string) => Promise<void>;
+  markAllAsRead: () => Promise<void>;
+  deleteMessage: (id: string) => Promise<void>;
+  refreshMessages: () => Promise<void>;
   resetMessages: () => void;
 }
-
-const defaultInitialMessages: ContactMessage[] = [
-  {
-    id: 'msg-1',
-    date: '2024-11-20 14:35',
-    type: 'product_inquiry',
-    productName: 'FiberGel S2',
-    name: 'Eng. Manuel Navarro',
-    company: 'Construcciones Mediterráneo SL',
-    email: 'm.navarro@med-construcciones.es',
-    phone: '+34 612 345 678',
-    country: 'Spain',
-    subject: 'Maritime container pricing for FiberGel S2 (25kg)',
-    message: 'We are bidding for a 4-star coastal resort renovation in Alicante. We need technical submittal documents and FOB Valencia prices for two 20ft containers of FiberGel S2.',
-    isRead: false
-  },
-  {
-    id: 'msg-2',
-    date: '2025-01-14 10:12',
-    type: 'contact',
-    name: 'Karim Ben Salem',
-    company: 'Société Carthage Bâtiment',
-    email: 'k.bensalem@carthage-bat.tn',
-    phone: '+216 71 XXX XXX',
-    country: 'Tunisia',
-    subject: 'Distributorship agreement for CemAir & FiberGel in Greater Tunis',
-    message: 'We are interested in distributing Xtreme European-certified tile adhesives and CemAir lightweight mortar across our retail branches in Tunis and Sousse.',
-    isRead: false
-  },
-  {
-    id: 'msg-3',
-    date: '2025-01-10 16:45',
-    type: 'product_inquiry',
-    productName: 'SuperCol PISCINAS',
-    name: 'Youssef Trabelsi',
-    company: 'Société Hôtelière & Balnéaire',
-    email: 'y.trabelsi@resort-hammamet.tn',
-    phone: '+216 72 XXX XXX',
-    country: 'Tunisia',
-    subject: 'Pool mosaic adhesive resistance specification for Hammamet resort',
-    message: 'We require verification that SuperCol Piscinas is compatible with chlorinated and saltwater thermal pools for our hotel renovation project in Hammamet.',
-    isRead: true
-  }
-];
 
 const STORAGE_KEY = 'xtreme_admin_inbox';
 
 const ContactContext = createContext<ContactContextType | undefined>(undefined);
 
 export function ContactProvider({ children }: { children: React.ReactNode }) {
-  const [messages, setMessages] = useState<ContactMessage[]>(defaultInitialMessages);
+  const [messages, setMessages] = useState<ContactMessage[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
 
-  useEffect(() => {
+  // Fetch messages from server database
+  const fetchServerMessages = useCallback(async () => {
+    try {
+      const res = await fetch('/api/messages', { cache: 'no-store' });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && Array.isArray(data.messages)) {
+          setMessages(data.messages);
+          try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(data.messages));
+          } catch {
+            // Ignore localStorage error
+          }
+          return;
+        }
+      }
+    } catch (e) {
+      console.error('Failed to fetch messages from server API, falling back to cache:', e);
+    }
+
+    // Fallback to localStorage if server request fails
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
         const parsed = JSON.parse(stored);
         if (Array.isArray(parsed)) {
-          queueMicrotask(() => {
-            setMessages(parsed);
-          });
+          setMessages(parsed);
         }
       }
-    } catch (e) {
-      console.error('Failed to load messages from localStorage', e);
+    } catch {
+      // Ignore
     }
   }, []);
 
-  const saveMessages = (updated: ContactMessage[]) => {
-    setMessages(updated);
+  // Initial load & periodic background sync every 10 seconds
+  useEffect(() => {
+    let isMounted = true;
+    // Immediate hydration from cache
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-    } catch (e) {
-      console.error('Failed to persist messages', e);
+      const stored = localStorage.getItem(STORAGE_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          queueMicrotask(() => {
+            if (isMounted) setMessages(parsed);
+          });
+        }
+      }
+    } catch {
+      // Ignore
     }
-  };
 
-  const addMessage = (msgData: Omit<ContactMessage, 'id' | 'date' | 'isRead'>) => {
+    queueMicrotask(() => {
+      if (isMounted) {
+        fetchServerMessages().finally(() => {
+          if (isMounted) setIsLoading(false);
+        });
+      }
+    });
+
+    const interval = setInterval(fetchServerMessages, 10000);
+    const handleFocus = () => fetchServerMessages();
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [fetchServerMessages]);
+
+  const addMessage = async (msgData: Omit<ContactMessage, 'id' | 'date' | 'isRead'>): Promise<ContactMessage | null> => {
+    // Generate optimistic message for zero UI latency
     const now = new Date();
     const dateFormatted = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-    
-    const newMsg: ContactMessage = {
+    const tempId = `msg-${Date.now()}`;
+    const optimisticMsg: ContactMessage = {
       ...msgData,
-      id: `msg-${Date.now()}`,
+      id: tempId,
       date: dateFormatted,
       isRead: false
     };
 
-    saveMessages([newMsg, ...messages]);
+    setMessages((prev) => [optimisticMsg, ...prev]);
+
+    try {
+      const res = await fetch('/api/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(msgData)
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.message) {
+          setMessages((prev) => [data.message, ...prev.filter((m) => m.id !== tempId)]);
+          return data.message;
+        }
+      }
+    } catch (e) {
+      console.error('Failed to post message to server:', e);
+    }
+
+    return optimisticMsg;
   };
 
-  const markAsRead = (id: string) => {
-    const updated = messages.map((m) =>
-      m.id === id ? { ...m, isRead: true } : m
-    );
-    saveMessages(updated);
+  const markAsRead = async (id: string) => {
+    setMessages((prev) => prev.map((m) => (m.id === id ? { ...m, isRead: true } : m)));
+    try {
+      await fetch('/api/messages', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, isRead: true })
+      });
+    } catch (e) {
+      console.error('Failed to update message on server:', e);
+    }
   };
 
-  const markAllAsRead = () => {
-    const updated = messages.map((m) => ({ ...m, isRead: true }));
-    saveMessages(updated);
+  const markAllAsRead = async () => {
+    setMessages((prev) => prev.map((m) => ({ ...m, isRead: true })));
+    try {
+      await fetch('/api/messages', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ markAllRead: true })
+      });
+    } catch (e) {
+      console.error('Failed to mark all as read on server:', e);
+    }
   };
 
-  const deleteMessage = (id: string) => {
-    const updated = messages.filter((m) => m.id !== id);
-    saveMessages(updated);
+  const deleteMessage = async (id: string) => {
+    setMessages((prev) => prev.filter((m) => m.id !== id));
+    try {
+      await fetch(`/api/messages?id=${encodeURIComponent(id)}`, {
+        method: 'DELETE'
+      });
+    } catch (e) {
+      console.error('Failed to delete message on server:', e);
+    }
   };
 
   const resetMessages = () => {
-    saveMessages(defaultInitialMessages);
+    setMessages([]);
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+    } catch {
+      // Ignore
+    }
   };
 
   const unreadCount = messages.filter((m) => !m.isRead).length;
@@ -145,10 +196,12 @@ export function ContactProvider({ children }: { children: React.ReactNode }) {
       value={{
         messages,
         unreadCount,
+        isLoading,
         addMessage,
         markAsRead,
         markAllAsRead,
         deleteMessage,
+        refreshMessages: fetchServerMessages,
         resetMessages
       }}
     >
