@@ -29,6 +29,12 @@ export const assets = {
     newLogo: '/images/about/newLogo.svg',
   },
 
+  productLines: {
+    line1: '/images/products/newpLines.webp',
+    line2: '/images/products/newpLines2.webp',
+    line3: '/images/products/newpLines3.webp',
+  },
+
   products: {
     'xtracol-c1te': '/images/products/xtracol-c1te.webp',
     'xtracol-c2te': '/images/products/xtracol-c2te.webp',
