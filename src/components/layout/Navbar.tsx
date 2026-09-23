@@ -38,11 +38,11 @@ export default function Navbar() {
           - Background: rgba(188, 38, 40, 0.8) with backdrop-filter: blur(10px)
           - Centered nav links: padding 0.5rem 1rem, active is bold white, inactive is text-white/90
         On Mobile:
-          - Height: 60px with solid #BC2628 (Combined with 40px TopBar = 100px total height matching 400x100)
+          - Height: 60px with solid #C62828 (Combined with 40px TopBar = 100px total height matching 400x100)
           - Centered logo: 150px
           - Hamburger menu on right: 22px x 22px 3-bar toggle
       */}
-      <div className="bg-[#BC2628] md:bg-[rgba(188,38,40,0.8)] md:backdrop-blur-[10px] w-full transition-colors">
+      <div className="bg-[#C62828] md:bg-[rgba(198,40,40,0.8)] md:backdrop-blur-[10px] w-full transition-colors">
         {/* Mobile Bar: 60px height */}
         <div className="flex md:hidden items-center justify-between h-[60px] px-4 relative">
           <div className="w-[30px]" />

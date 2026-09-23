@@ -10,19 +10,13 @@ async function main() {
   const bullPngBuffer = await sharp(bullPath).png().toBuffer();
   const bullBase64 = `data:image/png;base64,${bullPngBuffer.toString('base64')}`;
 
-  // Banner geometry — "old banner" style with mascot head in BLUE zone:
+  // Banner geometry — full bleed official brand red #C62828 matching Tunisia flag:
   // Canvas: 1024 x 300
-  //
-  // TOP ZONE (y=0..90): Navy blue #050A5C — this is where the mascot horns/head live
-  // RED ZONE (y=90..300): #BC2628 — full bleed red bar, height=210
-  //
+  // Background: Official brand red #C62828 (100% full bleed)
   // Mascot: 240x300, placed at x=220 y=0
-  //   - Horns are at top (~y=0..80) → in the BLUE zone
-  //   - Body/feet at bottom → in the RED zone
-  //
-  // Tunisia Flag disc: cx=130, cy=195 (vertical center of red zone: 90+(300-90)/2=195), r=52
+  // Tunisia Flag disc: cx=130, cy=195, r=52 (matching generate_tunisia_flag.js red #C62828)
   // Xtreme Logo: translate(460, 155)
-  // "Spanish Technology" text: y=225
+  // "Spanish Technology" text: y=223
 
   const svgContent = `<svg width="1024" height="300" viewBox="0 0 1024 300" xmlns="http://www.w3.org/2000/svg">
   <defs>
@@ -32,17 +26,17 @@ async function main() {
     </mask>
   </defs>
 
-  <!-- Full-bleed red banner without blue top bar -->
-  <rect x="0" y="0" width="1024" height="300" fill="#BC2628" />
+  <!-- Full-bleed red banner using official brand red #C62828 matching Tunisia flag -->
+  <rect x="0" y="0" width="1024" height="300" fill="#C62828" />
 
   <!-- Tunisia Flag White Disc (centered in red zone) -->
   <circle cx="130" cy="195" r="52" fill="#FFFFFF" />
 
   <!-- Tunisia Flag Red Crescent -->
-  <circle cx="130" cy="195" r="39" fill="#BC2628" mask="url(#crescent-mask)" />
+  <circle cx="130" cy="195" r="39" fill="#C62828" mask="url(#crescent-mask)" />
 
   <!-- Tunisia Flag Red 5-Pointed Star -->
-  <polygon points="160.00,195.00 148.99,198.96 148.57,210.88 141.26,201.55 129.77,204.71 136.42,195.00 129.77,185.29 141.26,188.45 148.57,179.12 148.99,191.04" fill="#BC2628" />
+  <polygon points="160.00,195.00 148.99,198.96 148.57,210.88 141.26,201.55 129.77,204.71 136.42,195.00 129.77,185.29 141.26,188.45 148.57,179.12 148.99,191.04" fill="#C62828" />
 
   <!-- Taurus Mascot: head/horns in blue zone, body in red zone -->
   <image href="${bullBase64}" x="220" y="0" width="240" height="300" />

@@ -1455,7 +1455,7 @@ export default function AdminPage() {
                   <span>Component: TopBar Header (Desktop & Mobile)</span>
                   <span className="text-emerald-400">Live Render</span>
                 </div>
-                <div className="bg-[#BC2628] text-white px-4 py-3 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs select-none">
+                <div className="bg-[#C62828] text-white px-4 py-3 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs select-none">
                   <div className="flex items-center gap-4 flex-wrap">
                     <span className="flex items-center gap-1.5 font-normal">
                       <Phone className="w-3.5 h-3.5 flex-shrink-0" />

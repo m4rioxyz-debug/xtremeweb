@@ -127,7 +127,7 @@ export default function AboutPage() {
 
       {/* Section 5: Official Spanish Technology & Tunisia Banner */}
       <section className="w-full flex justify-center px-4 sm:px-8 py-10 md:py-16">
-        <div className="bg-[#BC2628] w-full max-w-[1200px] min-h-[140px] sm:aspect-[5/1] relative flex items-center justify-between overflow-visible rounded-xl shadow-xl">
+        <div className="bg-[#C62828] w-full max-w-[1200px] min-h-[140px] sm:aspect-[5/1] relative flex items-center justify-between overflow-visible rounded-xl shadow-xl">
           {/* Spain Flag Graphic on Left */}
           <div className="h-full w-[25%] sm:w-[22%] min-w-[85px] sm:min-w-[140px] relative z-[1] overflow-hidden rounded-l-xl flex-shrink-0">
             <Image

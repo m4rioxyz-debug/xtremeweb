@@ -176,7 +176,7 @@ export default function LanguageSwitcher() {
                         className="language-selector_checkmark"
                         style={{
                           marginLeft: 'auto',
-                          color: '#BC2628',
+                          color: '#C62828',
                           fontWeight: 700,
                           width: '15px',
                           textAlign: 'center',

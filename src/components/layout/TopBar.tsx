@@ -8,7 +8,7 @@ export default function TopBar() {
   const { settings } = useCompanySettings();
 
   return (
-    <div className="w-full bg-[#BC2628] text-white select-none transition-all duration-200">
+    <div className="w-full bg-[#C62828] text-white select-none transition-all duration-200">
       <div className="h-[40px] md:h-[80px] px-3 sm:px-6 lg:px-[10%] flex items-center justify-between border-b border-white/10 md:border-b-0">
         {/* Left Side: Contact Information (Width 30% on desktop) */}
         <div className="md:w-[30%] flex items-center gap-3 sm:gap-6 md:gap-8 flex-nowrap whitespace-nowrap">
