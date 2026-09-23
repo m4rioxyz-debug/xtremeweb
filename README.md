@@ -1,6 +1,6 @@
 # XTREME Tunisia — Spanish Technology in Construction Chemicals & Advanced Mortars
 
-![Xtreme Tunisia Banner](/public/images/brand/xtreme-tunisia-banner.png)
+![Xtreme Tunisia Banner](public/images/brand/xtreme-tunisia-banner.png)
 
 Official web platform for **XTREME Tunisia**, engineered with authentic Spanish formulation technology and certified European manufacturing standards (UNE EN 12004, EN 998, ISO 9001:2015).
 

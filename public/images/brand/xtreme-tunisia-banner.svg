@@ -6,11 +6,8 @@
     </mask>
   </defs>
 
-  <!-- TOP ZONE: Navy blue background (mascot head/horns live here) -->
-  <rect x="0" y="0" width="1024" height="90" fill="#050A5C" />
-
-  <!-- RED ZONE: Full-bleed red banner -->
-  <rect x="0" y="90" width="1024" height="210" fill="#BC2628" />
+  <!-- Full-bleed red banner without blue top bar -->
+  <rect x="0" y="0" width="1024" height="300" fill="#BC2628" />
 
   <!-- Tunisia Flag White Disc (centered in red zone) -->
   <circle cx="130" cy="195" r="52" fill="#FFFFFF" />

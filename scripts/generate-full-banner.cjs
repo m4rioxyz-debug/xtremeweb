@@ -32,11 +32,8 @@ async function main() {
     </mask>
   </defs>
 
-  <!-- TOP ZONE: Navy blue background (mascot head/horns live here) -->
-  <rect x="0" y="0" width="1024" height="90" fill="#050A5C" />
-
-  <!-- RED ZONE: Full-bleed red banner -->
-  <rect x="0" y="90" width="1024" height="210" fill="#BC2628" />
+  <!-- Full-bleed red banner without blue top bar -->
+  <rect x="0" y="0" width="1024" height="300" fill="#BC2628" />
 
   <!-- Tunisia Flag White Disc (centered in red zone) -->
   <circle cx="130" cy="195" r="52" fill="#FFFFFF" />
@@ -81,22 +78,25 @@ async function main() {
   >Spanish Technology</text>
 </svg>`;
 
-  const svgPath = path.join(brandDir, 'xtreme-tunisia-banner.svg');
-  const png1xPath = path.join(brandDir, 'xtreme-tunisia-banner.png');
-  const png2xPath = path.join(brandDir, 'xtreme-tunisia-banner-2x.png');
-
-  fs.writeFileSync(svgPath, svgContent, 'utf-8');
-  console.log('Saved SVG to:', svgPath);
+  const targetDirs = [
+    brandDir,
+    path.join(__dirname, '..', 'public', 'images', 'about'),
+    path.join(__dirname, '..', 'public', 'assets'),
+    path.join(__dirname, '..', 'assets')
+  ];
 
   const svgBuffer = Buffer.from(svgContent);
+  const png1xBuffer = await sharp(svgBuffer).png().toBuffer();
+  const png2xBuffer = await sharp(svgBuffer, { density: 144 }).resize(2048, 600).png().toBuffer();
 
-  // 1x PNG: 1024 x 300
-  await sharp(svgBuffer).png().toFile(png1xPath);
-  console.log('Rendered 1x PNG (1024x300) to:', png1xPath);
-
-  // 2x PNG: 2048 x 600
-  await sharp(svgBuffer, { density: 144 }).resize(2048, 600).png().toFile(png2xPath);
-  console.log('Rendered 2x PNG (2048x600) to:', png2xPath);
+  for (const dir of targetDirs) {
+    if (fs.existsSync(dir)) {
+      fs.writeFileSync(path.join(dir, 'xtreme-tunisia-banner.svg'), svgContent, 'utf-8');
+      fs.writeFileSync(path.join(dir, 'xtreme-tunisia-banner.png'), png1xBuffer);
+      fs.writeFileSync(path.join(dir, 'xtreme-tunisia-banner-2x.png'), png2xBuffer);
+      console.log('Saved banner set to:', dir);
+    }
+  }
 }
 
 main().catch(err => {
